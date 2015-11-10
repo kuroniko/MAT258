@@ -1,0 +1,607 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "newtmin (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 1,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "function newtmin( obj, x0; maxIts=100, optTol=1e-6)\n",
+    "    # Newton method with Armijo backtracking and some treatment with Hessian, treatment 2\n",
+    "     # Minimize a function f using Newton’s method.\n",
+    "     # obj:  a function that evaluates the objective value,\n",
+    "     # gradient, and Hessian at a point x, i.e.,\n",
+    "     # (f, g, H) = obj(x)\n",
+    "     # x0: starting point.\n",
+    "     # maxIts (optional): maximum number of iterations.\n",
+    "     # optTol (optional): optimality tolerance based on\n",
+    "     #                    ||grad(x)|| <= optTol*||grad(x0)||\n",
+    "    mu=1e-4\n",
+    "    epsilon=0.01\n",
+    "    x=x0\n",
+    "    status = 0\n",
+    "    its = 0\n",
+    "    (f0,g0,H0)=obj(x0)\n",
+    "    (f,g,H)=obj(x)\n",
+    "    (V,S)=eig(H)\n",
+    "    bar=ones(size(H,1))*epsilon\n",
+    "    bar=Diagonal(bar)\n",
+    "    bH=S*max(bar,abs(Diagonal(V)))*S'\n",
+    "    while status != 1\n",
+    "        alpha = 1\n",
+    "        xnew = x-alpha*inv(bH)*g\n",
+    "        (fnew,gnew,Hnew)=obj(xnew)\n",
+    "        sts =-fnew+f-alpha*mu*g'*inv(bH)*g\n",
+    "        while sts[1]<0\n",
+    "            alpha=alpha/2\n",
+    "            xnew = x-alpha*inv(bH)*g\n",
+    "            (fnew,gnew,Hnew)=obj(xnew)\n",
+    "            sts=-fnew+f-alpha*mu*g'*inv(bH)*g\n",
+    "        end\n",
+    "        x = x-alpha*inv(bH)*g\n",
+    "        (f,g,H)=obj(x)\n",
+    "        (V,S)=eig(H)\n",
+    "        bar=ones(size(H,1))*epsilon\n",
+    "        bar=Diagonal(bar)\n",
+    "        bH=S*max(bar,abs(Diagonal(V)))*S'\n",
+    "        its = its+1\n",
+    "        if norm(g)<= optTol*norm(g0)\n",
+    "            status = 1\n",
+    "        end\n",
+    "        if its>maxIts\n",
+    "            status = 1\n",
+    "        end\n",
+    "    end\n",
+    "return (x, its)\n",
+    "end"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "using ForwardDiff\n",
+    "using ReverseDiffSource"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#Test problem 6"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "J (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 16,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "x0=[-1.2;1]\n",
+    "f(x)=(1-x[1])^2\n",
+    "c(x)=10*(x[2]-x[1]^2)\n",
+    "g(x)=ForwardDiff.gradient(x -> f(x))(x)\n",
+    "H(x)=ForwardDiff.hessian(x -> f(x))(x)\n",
+    "J(x)=(ForwardDiff.gradient(x -> c(x))(x))'"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "nxxLrou (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 17,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "function Lrou(x,y,rou)\n",
+    "    result=f(x)-y'*c(x)+rou/2*c(x)'*c(x)\n",
+    "    return result\n",
+    "end\n",
+    "function nxLrou(x,y,rou)\n",
+    "    result=g(x)-J(x)'*y+rou*J(x)'*c(x)\n",
+    "    result=result[:,1]\n",
+    "    return result\n",
+    "end\n",
+    "function nxxLrou(x,y,rou)\n",
+    "    d1(z)=-y'*c(z)\n",
+    "    dh1(z)=ForwardDiff.hessian(z -> d1(z))(z)\n",
+    "    d2(z)=rou/2*c(z)'*c(z)\n",
+    "    dh2(z)=ForwardDiff.hessian(z -> d2(z))(z)\n",
+    "    result=H(x)+dh1(x)+dh2(x)\n",
+    "    return result\n",
+    "end"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "auglag (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 22,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "function auglag( x0; maxIts=100, optTol=1e-6)\n",
+    "    y0=1\n",
+    "    c0=max(norm(c(x0)),1)\n",
+    "    d0=norm(g(x0)-J(x0)'*y0)\n",
+    "    sts=0\n",
+    "    y=y0\n",
+    "    x=x0\n",
+    "    rou=1\n",
+    "    while sts==0\n",
+    "        function obj(x)\n",
+    "            lagf = Lrou(x,y,rou)   # objective value at x\n",
+    "            lagg = nxLrou(x,y,rou)  # gradient at x\n",
+    "            lagH = nxxLrou(x,y,rou)   # Hessian at x\n",
+    "            return (lagf,lagg,lagH)\n",
+    "        end\n",
+    "        (xnew,its)=newtmin( obj, x; maxIts=10, optTol=1e-6)\n",
+    "        if norm(c(xnew))<1/2*norm(c(x))\n",
+    "            y=y+rou*c(xnew)\n",
+    "        else\n",
+    "            rou=rou*10\n",
+    "        end\n",
+    "        if norm(c(xnew))<optTol*c0 \n",
+    "            sts=1\n",
+    "        end\n",
+    "        x=xnew\n",
+    "    end\n",
+    "    return x\n",
+    "end"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "2-element Array{Float64,1}:\n",
+       " 1.0\n",
+       " 1.0"
+      ]
+     },
+     "execution_count": 27,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "auglag( x0; maxIts=100, optTol=1e-6)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#Test problem 7"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 53,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "H (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 53,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "x0=[2;2]\n",
+    "f(x)=log(1+x[1]^2)-x[2]\n",
+    "c(x)=(1+x[1]^2)^2+x[2]^2-4\n",
+    "J(x)=(ForwardDiff.gradient(x -> c(x))(x))'\n",
+    "g(x)=[2*x[1]/(1+x[1]^2);-1]\n",
+    "H(x)=[(2-2*x[1]^2)/(1+x[1]^2)^2 0;0 0]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 54,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "nxxLrou (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 54,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "function Lrou(x,y,rou)\n",
+    "    result=f(x)-y'*c(x)+rou/2*c(x)'*c(x)\n",
+    "    return result\n",
+    "end\n",
+    "function nxLrou(x,y,rou)\n",
+    "    result=g(x)-J(x)'*y+rou*J(x)'*c(x)\n",
+    "    result=result[:,1]\n",
+    "    #result=convert(Array{Float64,1}, result)\n",
+    "    return result\n",
+    "end\n",
+    "function nxxLrou(x,y,rou)\n",
+    "    d1(z)=-y'*c(z)\n",
+    "    dh1(x)=-y*[4+12*x[1]^2 0;0 2]\n",
+    "    d2(z)=rou/2*c(z)'*c(z)\n",
+    "    dh2(x)=rou*[4+12*x[1]^2 0;0 2]*c(x)+rou*J(x)'*J(x)\n",
+    "    result=H(x)+dh1(x)+dh2(x)\n",
+    "    return result\n",
+    "end"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 55,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "2-element Array{Float64,1}:\n",
+       " -9.51374e-42\n",
+       "  1.73206    "
+      ]
+     },
+     "execution_count": 55,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "function auglag( x0; maxIts=100, optTol=1e-6)\n",
+    "    y0=1\n",
+    "    c0=max(norm(c(x0)),1)\n",
+    "    d0=norm(g(x0)-J(x0)'*y0)\n",
+    "    sts=0\n",
+    "    y=y0\n",
+    "    x=x0\n",
+    "    rou=1\n",
+    "    while sts==0\n",
+    "        function obj(x)\n",
+    "            lagf = Lrou(x,y,rou)   # objective value at x\n",
+    "            lagg = nxLrou(x,y,rou)  # gradient at x\n",
+    "            lagH = nxxLrou(x,y,rou)   # Hessian at x\n",
+    "            return (lagf,lagg,lagH)\n",
+    "        end\n",
+    "        (xnew,its)=newtmin( obj, x; maxIts=10, optTol=1e-6)\n",
+    "        if norm(c(xnew))<1/2*norm(c(x))\n",
+    "            ynew=y+rou*c(xnew)\n",
+    "        else\n",
+    "            rou=rou*10\n",
+    "        end\n",
+    "        if norm(c(xnew))<optTol*c0 \n",
+    "            if abs(abs(J(xnew)*g(xnew)/(norm(J(xnew))*norm(g(xnew))))-1)[1]<optTol\n",
+    "            sts=1\n",
+    "            end\n",
+    "        end\n",
+    "        x=xnew\n",
+    "        y=ynew\n",
+    "    end\n",
+    "    return x\n",
+    "end\n",
+    "auglag( x0; maxIts=100, optTol=1e-6)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#Test problem 8"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "nxxLrou (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 6,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "x0=[2;1]\n",
+    "f(x)=-1\n",
+    "c(x)=[x[1]^2+x[2]^2-25; x[1]*x[2]-9]\n",
+    "g(x)=[0;0]\n",
+    "H(x)=[0 0 ;0 0 ]\n",
+    "J(x)=([2*x[1] x[2];2*x[2] x[1]])' \n",
+    "function Lrou(x,y,rou)\n",
+    "    result=f(x)-y'*c(x)+rou/2*c(x)'*c(x)\n",
+    "    return result\n",
+    "end\n",
+    "function nxLrou(x,y,rou)\n",
+    "    result=g(x)-J(x)'*y+rou*J(x)'*c(x)\n",
+    "    result=result[:,1]\n",
+    "    #result=convert(Array{Float64,1}, result)\n",
+    "    return result\n",
+    "end\n",
+    "function nxxLrou(x,y,rou)\n",
+    "    d1(z)=-y'*c(z)\n",
+    "    dh1(z)=-y[1]*[2 0;0 2]-y[2]*[0 1; 1 0]\n",
+    "    d2(z)=rou/2*c(z)'*c(z)\n",
+    "    dh2(z)=rou*[2 0;0 2]*c(x)[1]+rou*[0 1; 1 0]*c(x)[2]+rou*J(x)'*J(x)\n",
+    "    result=H(x)+dh1(x)+dh2(x)\n",
+    "    return result\n",
+    "end"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 54,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "2-element Array{Float64,1}:\n",
+       " 4.6016 \n",
+       " 1.95585"
+      ]
+     },
+     "execution_count": 54,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "function auglag( x0; maxIts=100, optTol=1e-6)\n",
+    "    y0=[1;1]\n",
+    "    c0=max(norm(c(x0)),1)\n",
+    "    d0=norm(g(x0)-J(x0)'*y0)\n",
+    "    sts=0\n",
+    "    y=y0\n",
+    "    x=x0\n",
+    "    rou=1\n",
+    "    while sts==0\n",
+    "        function obj(x)\n",
+    "            lagf = Lrou(x,y,rou)   # objective value at x\n",
+    "            lagg = nxLrou(x,y,rou)  # gradient at x\n",
+    "            lagH = nxxLrou(x,y,rou)   # Hessian at x\n",
+    "            return (lagf,lagg,lagH)\n",
+    "        end\n",
+    "        (xnew,its)=newtmin( obj, x; maxIts=10, optTol=1e-6)\n",
+    "        if norm(c(xnew))<1/2*norm(c(x))\n",
+    "            ynew=y+rou*c(xnew)\n",
+    "        else\n",
+    "            rou=rou*10\n",
+    "        end\n",
+    "        if norm(c(xnew))<optTol*c0 \n",
+    "            sts=1\n",
+    "        end\n",
+    "        x=xnew\n",
+    "        y=ynew\n",
+    "    end\n",
+    "    return x\n",
+    "end\n",
+    "auglag( x0; maxIts=100, optTol=1e-6)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "collapsed": false
+   },
+   "source": [
+    "#Test problem 9"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 119,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "nxxLrou (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 119,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "x0=[0;0]\n",
+    "f(x)=sin(pi*x[1]/12)*cos(pi*x[2]/16)\n",
+    "c(x)=4*x[1]-3*x[2]\n",
+    "g(x)=[pi/12*cos(pi*x[1]/12)*cos(pi*x[2]/16); -pi/16*sin(pi*x[1]/12)*sin(pi*x[2]/16)]\n",
+    "H(x)=[-pi^2/(12^2)*sin(pi*x[1]/12)*cos(pi*x[2]/16) -pi^2/(12*16)*cos(pi*x[1]/12)*sin(pi*x[2]/16);-pi^2/(16*12)*cos(pi*x[1]/12)*sin(pi*x[2]/16) -pi^2/(16^2)*sin(pi*x[1]/12)*cos(pi*x[2]/16)]\n",
+    "J(x)=(ForwardDiff.gradient(x -> c(x))(x))'\n",
+    "function Lrou(x,y,rou)\n",
+    "    result=f(x)-y'*c(x)+rou/2*c(x)'*c(x)\n",
+    "    return result\n",
+    "end\n",
+    "function nxLrou(x,y,rou)\n",
+    "    result=g(x)-J(x)'*y+rou*J(x)'*c(x)\n",
+    "    result=result[:,1]\n",
+    "    #result=convert(Array{Float64,1}, result)\n",
+    "    return result\n",
+    "end\n",
+    "function nxxLrou(x,y,rou)\n",
+    "    d1(z)=-y'*c(z)\n",
+    "    dh1(z)=ForwardDiff.hessian(z -> d1(z))(z)\n",
+    "    d2(z)=rou/2*c(z)'*c(z)\n",
+    "    dh2(z)=ForwardDiff.hessian(z -> d2(z))(z)\n",
+    "    result=H(x)+dh1(x)+dh2(x)\n",
+    "    return result\n",
+    "end"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 120,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "auglag (generic function with 1 method)"
+      ]
+     },
+     "execution_count": 120,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "function auglag( x0; maxIts=100, optTol=1e-6)\n",
+    "    y0=1\n",
+    "    c0=max(norm(c(x0)),1)\n",
+    "    d0=norm(g(x0)-J(x0)'*y0)\n",
+    "    sts=0\n",
+    "    y=y0\n",
+    "    x=x0\n",
+    "    rou=1\n",
+    "    while sts==0\n",
+    "        function obj(x)\n",
+    "            lagf = Lrou(x,y,rou)   # objective value at x\n",
+    "            lagg = nxLrou(x,y,rou)  # gradient at x\n",
+    "            lagH = nxxLrou(x,y,rou)   # Hessian at x\n",
+    "            return (lagf,lagg,lagH)\n",
+    "        end\n",
+    "        (xnew,its)=newtmin( obj, x; maxIts=10, optTol=1e-6)\n",
+    "        if norm(c(xnew))<1/2*norm(c(x))\n",
+    "            y=y+rou*c(xnew)\n",
+    "        else\n",
+    "            rou=rou*10\n",
+    "        end\n",
+    "        if norm(c(xnew))<optTol*c0 \n",
+    "            if abs(abs(J(xnew)*g(xnew)/(norm(J(xnew))*norm(g(xnew))))-1)[1]<optTol\n",
+    "            sts=1\n",
+    "            end\n",
+    "        end\n",
+    "        x=xnew\n",
+    "    end\n",
+    "    return x\n",
+    "end"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 121,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "2-element Array{Float64,1}:\n",
+       " -3.0\n",
+       " -4.0"
+      ]
+     },
+     "execution_count": 121,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "auglag( x0; maxIts=100, optTol=1e-6)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Julia 0.5.0-dev",
+   "language": "julia",
+   "name": "julia-0.5"
+  },
+  "language_info": {
+   "file_extension": ".jl",
+   "mimetype": "application/julia",
+   "name": "julia",
+   "version": "0.5.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 0
+}
